@@ -71,16 +71,16 @@ describe('indexeddb_persistence', function () {
 
         var events = [new Event(uuid(), 'type2', { test: 22 })];
         var commit = new Commit(uuid(), 'master', '2', 0, events);
-        partition.append(commit);
 
-        Promise.join(partition.queryStream('1'), partition.queryStream('2'), function (r1, r2) {
-          r1.length.should.equal(1);
-          r2.length.should.equal(1);
-          done();
-        }).catch(function (err) {
-          done(err);
+        partition.append(commit).then(function () {
+          Promise.join(partition.queryStream('1'), partition.queryStream('2'), function (r1, r2) {
+            r1.length.should.equal(1);
+            r2.length.should.equal(1);
+            done();
+          }).catch(function (err) {
+            done(err);
+          });
         });
-
       });
     });
 
