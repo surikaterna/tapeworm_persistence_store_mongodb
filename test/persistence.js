@@ -134,6 +134,35 @@ describe('indexeddb_persistence', function () {
     });
   });
 
+  it('query stream from version lead to empty results', function (done) {
+    var store = new Store(getDb());
+    store.openPartition('1').then(function (partition) {
+      var streamId = uuid();
+      var events = [
+        new Event(uuid(), 'event-1', { test: 11, version: 0 }),
+        new Event(uuid(), 'event-2', { test: 12, version: 1 }),
+        new Event(uuid(), 'event-3', { test: 13, version: 2 })
+      ];
+      events.forEach(function (e) { e.version = e.data.version }); // fake version...
+      var commit = new Commit(uuid(), 'master', streamId, 0, events);
+      partition.append(commit).then(function () {
+        var events = [
+          new Event(uuid(), 'event-4', { test: 14, version: 3 }),
+          new Event(uuid(), 'event-5', { test: 15, version: 4 }),
+          new Event(uuid(), 'event-6', { test: 16, version: 5 })
+        ];
+        events.forEach(function (e) { e.version = e.data.version }); // fake version...
+        var commit = new Commit(uuid(), 'master', streamId, 1, events);
+        partition.append(commit).then(function () {
+          partition.queryStream(streamId, 6).then((res) => {
+            res.should.eql([]);
+            done();
+          })
+        });
+      });
+    });
+  });
+
   it('query stream from version with fallback', function (done) {
     var store = new Store(getDb());
     store.openPartition('1').then(function (partition) {
