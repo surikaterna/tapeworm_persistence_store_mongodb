@@ -196,6 +196,38 @@ describe('indexeddb_persistence', function () {
     });
   });
 
+  it('#getLatestCommit', function (done) {
+    var store = new Store(getDb());
+    store.openPartition('1').then(function (partition) {
+      var streamId = uuid();
+      partition.getLatestCommit(streamId).then((res) => {
+        should.equal(res, undefined)
+        var events = [
+          new Event(uuid(), 'event-1', { test: 11, version: 0 }),
+          new Event(uuid(), 'event-2', { test: 12, version: 1 }),
+        ];
+        events.forEach(function (e) { e.version = e.data.version }); // fake version...
+        var commit = new Commit(uuid(), 'master', streamId, 0, events);
+        partition.append(commit).then(function () {
+          var events = [
+            new Event(uuid(), 'event-4', { test: 14, version: 3 }),
+            new Event(uuid(), 'event-5', { test: 15, version: 4 }),
+            new Event(uuid(), 'event-6', { test: 16, version: 5 })
+          ];
+          events.forEach(function (e) { e.version = e.data.version }); // fake version...
+          var commit = new Commit(uuid(), 'master', streamId, 1, events);
+          partition.append(commit).then(function () {
+            partition.getLatestCommit(streamId).then((res) => {
+              res.commitSequence.should.equal(1)
+              res.events.length.should.equal(3);
+              res.events[2].data.test.should.equal(16);
+              done();
+            })
+          });
+        });
+      });
+    });
+  });
 
   describe('#snapshot', function () {
     it('should return previously stored snapshot', function (done) {
