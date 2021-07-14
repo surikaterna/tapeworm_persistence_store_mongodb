@@ -229,6 +229,36 @@ describe('indexeddb_persistence', function () {
     });
   });
 
+  it('#truncateStreamFrom', function (done) {
+    var store = new Store(getDb());
+    store.openPartition('1').then(function (partition) {
+      var firstStreamId = uuid();
+      var secondStreamId = uuid();
+      var promises = [];
+      promises.push(partition.append(new Commit(uuid(), 'master', firstStreamId, 0, [new Event(uuid(), 'event-1-1', { test: 11, version: 0 })])));
+      promises.push(partition.append(new Commit(uuid(), 'master', secondStreamId, 0, [new Event(uuid(), 'event-2-1', { test: 21, version: 0 })])));
+      promises.push(partition.append(new Commit(uuid(), 'master', firstStreamId, 1, [new Event(uuid(), 'event-1-2', { test: 12, version: 1 })])));
+      promises.push(partition.append(new Commit(uuid(), 'master', secondStreamId, 1, [new Event(uuid(), 'event-2-2', { test: 22, version: 1 })])));
+
+      Promise.all(promises).then(async () => {
+        await partition.truncateStreamFrom(firstStreamId, 1); // truncate from sequence 1
+        var r1 = await partition.queryStream(firstStreamId);
+        var r2 = await partition.queryStream(secondStreamId);
+        r1.length.should.equal(1);
+        r1[0].commitSequence.should.equal(0); // seqeunce 0 should exist
+        r2.length.should.equal(2); // secondStream should not be affected
+
+        await partition.truncateStreamFrom(secondStreamId, -1); // truncate all
+        r1 = await partition.queryStream(firstStreamId);
+        r2 = await partition.queryStream(secondStreamId);
+        r1.length.should.equal(1); // firstStream should not be affected
+        r2.length.should.equal(0); // should be empty
+
+        done();
+      });
+    });
+  });
+
   describe('#snapshot', function () {
     it('should return previously stored snapshot', function (done) {
       var store = new Store(getDb());
