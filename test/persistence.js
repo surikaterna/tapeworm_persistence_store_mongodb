@@ -17,7 +17,7 @@ describe('indexeddb_persistence', function () {
     return _db;
   }
   before(function (done) {
-    MongoClient.connect("mongodb://localhost:27017/db_test_suite", function (err, client) {
+    MongoClient.connect("mongodb://localhost:27017", { useUnifiedTopology: true }, function (err, client) {
       _client = client;
       _db = client.db("db_test_suite");
       done(err);
@@ -266,7 +266,7 @@ describe('indexeddb_persistence', function () {
       store.openPartition('1').then(function (part) {
         part.storeSnapshot('stream1', { iAmSnapshot: true }, 10).then(function (snapshot) {
           part.loadSnapshot('stream1').then(function (newSnapshot) {
-            JSON.stringify(newSnapshot).should.equal(JSON.stringify(snapshot));
+            newSnapshot.should.eql(snapshot);
             done();
           });
         });
