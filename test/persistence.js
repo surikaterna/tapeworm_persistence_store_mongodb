@@ -2,7 +2,6 @@ var should = require('should');
 var uuid = require("node-uuid").v4;
 var Promise = require("bluebird");
 var MongoClient = require('mongodb').MongoClient;
-var Server = require('mongodb').Server;
 var EventStore = require('tapeworm');
 var _ = require('lodash');
 var Store = require('..');
@@ -13,12 +12,14 @@ var PersistenceDuplicateCommitError = EventStore.DuplicateCommitError;
 
 describe('indexeddb_persistence', function () {
   var _db = null;
+  var _client = null;
   function getDb() {
     return _db;
   }
   before(function (done) {
-    MongoClient.connect("mongodb://localhost:27017/db_test_suite", function (err, db) {
-      _db = db;
+    MongoClient.connect("mongodb://localhost:27017", { useUnifiedTopology: true }, function (err, client) {
+      _client = client;
+      _db = client.db("db_test_suite");
       done(err);
     });
   });
@@ -41,7 +42,7 @@ describe('indexeddb_persistence', function () {
   });
 
   after(function (done) {
-    _db.close(function () {
+    _client.close(function () {
       done();
     });
   })
@@ -265,7 +266,7 @@ describe('indexeddb_persistence', function () {
       store.openPartition('1').then(function (part) {
         part.storeSnapshot('stream1', { iAmSnapshot: true }, 10).then(function (snapshot) {
           part.loadSnapshot('stream1').then(function (newSnapshot) {
-            JSON.stringify(newSnapshot).should.equal(JSON.stringify(snapshot));
+            newSnapshot.should.eql(snapshot);
             done();
           });
         });

@@ -1,6 +1,6 @@
 {
   "name": "tapeworm_persistence_store_mongodb",
-  "version": "1.1.8",
+  "version": "2.0.0",
   "description": "",
   "main": "index.js",
   "directories": {
@@ -34,7 +34,7 @@
   "homepage": "https://github.com/surikaterna/tapeworm_persistence_store_mongodb#readme",
   "dependencies": {
     "bluebird": "^2.5.2",
-    "mongodb": "^2.2.35",
+    "mongodb": "^3.7.3",
     "node-uuid": "^1.4.8"
   }
 }
