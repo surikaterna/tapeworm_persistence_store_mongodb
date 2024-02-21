@@ -9,7 +9,7 @@ var Event = EventStore.Event;
 var PersistenceConcurrencyError = EventStore.ConcurrencyError;
 var PersistenceDuplicateCommitError = EventStore.DuplicateCommitError;
 
-describe('indexeddb_persistence', () => {
+describe('mongodb_persistence', () => {
   var _db = null;
   var _client = null;
   function getDb() {
@@ -193,6 +193,66 @@ describe('indexeddb_persistence', () => {
           })
         });
       });
+    });
+  });
+
+  describe('#queryStreamFallback with ignored event types', () => {
+    let partition;
+    let streamId;
+
+    beforeAll(async () => {
+      const db = getDb();
+      const ignoredEventType = 'ignored.event';
+      const normalEventType = 'normal.event';
+      const options = {
+        fallbackFilter: {
+          'events.type': { $ne: ignoredEventType }
+        }
+      }
+      const partitionId = 'populated';
+      streamId = 'test-stream';
+
+      const store = new Store(db, options);
+      partition = await store.openPartition(partitionId);
+
+      const commitsCollection = db.collection('tw_populated_commits');
+      const commits = [];
+      let version = 0;
+      for (let commitSequence = 0; commitSequence < 30000; commitSequence++) {
+        const eventType = commitSequence % 10000 === 0 ? normalEventType : ignoredEventType;
+        const event = new Event(uuid(), eventType, { test: version });
+        event.version = version;
+        version++;
+
+        const events = [event];
+        if (eventType === normalEventType) {
+          const additionalEvent = new Event(uuid(), normalEventType, { test: version });
+          additionalEvent.version = version;
+          version++;
+          events.push(additionalEvent);
+        }
+
+        commits.push(new Commit(uuid(), partitionId, streamId, commitSequence, events));
+      }
+
+      await commitsCollection.insertMany(commits);
+    })
+
+    it('without fromEventSequence', async () => {
+      const commits = await partition.queryStream(streamId);
+      expect(commits.length).toBe(3);
+    });
+
+    it('with fromEventSequence', async () => {
+      const commits = await partition.queryStream(streamId, 18000);
+      expect(commits).toHaveLength(1);
+      expect(commits[0].events).toHaveLength(2);
+    });
+
+    it('with fromEventSequence where commit contains events with version smaller than fromEventSequence', async () => {
+      const commits = await partition.queryStream(streamId, 20003);
+      expect(commits).toHaveLength(1);
+      expect(commits[0].events).toHaveLength(1);
     });
   });
 
