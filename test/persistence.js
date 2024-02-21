@@ -16,7 +16,7 @@ describe('indexeddb_persistence', () => {
     return _db;
   }
   beforeAll(done => {
-    MongoClient.connect("mongodb://localhost:27017", { useUnifiedTopology: true }, function (err, client) {
+    MongoClient.connect(global.__MONGO_URI__, { useUnifiedTopology: true }, function (err, client) {
       _client = client;
       _db = client.db("db_test_suite");
       done(err);
