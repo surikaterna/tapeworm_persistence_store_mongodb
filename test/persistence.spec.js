@@ -1,61 +1,54 @@
-var should = require('should');
-var uuid = require("node-uuid").v4;
-var Promise = require("bluebird");
-var MongoClient = require('mongodb').MongoClient;
-var EventStore = require('tapeworm');
-var _ = require('lodash');
-var Store = require('..');
-var Commit = EventStore.Commit;
-var Event = EventStore.Event;
-var PersistenceConcurrencyError = EventStore.ConcurrencyError;
-var PersistenceDuplicateCommitError = EventStore.DuplicateCommitError;
+const { MongoClient } = require('mongodb');
+const Promise = require("bluebird");
+const EventStore = require('tapeworm');
+const Store = require('..');
+const Commit = EventStore.Commit;
+const Event = EventStore.Event;
+const PersistenceConcurrencyError = EventStore.ConcurrencyError;
+const PersistenceDuplicateCommitError = EventStore.DuplicateCommitError;
 
-describe('indexeddb_persistence', function () {
+function uuid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+describe('indexeddb_persistence', () => {
   var _db = null;
   var _client = null;
-  function getDb() {
-    return _db;
-  }
-  before(function (done) {
-    MongoClient.connect("mongodb://localhost:27017", { useUnifiedTopology: true }, function (err, client) {
-      _client = client;
-      _db = client.db("db_test_suite");
-      done(err);
-    });
-  });
-  beforeEach(function (done) {
-    var rdone = _.after(2, done);
-    _db.collection('tw_1_commits').drop(function () {
-      rdone();
-    });
-    _db.collection('tw_1_snapshots').drop(function () {
-      rdone();
-    });
+  const getDb = () => _db;
+
+  beforeAll(async () => {
+    const mongoClient = await MongoClient.connect(global.__MONGO_URI__);
+    const db = await mongoClient.db('db_test_suite');
+    _client = mongoClient;
+    _db = db;
   });
 
-  afterEach(function (done) {
-    /*		_db.dropDatabase(function() {
-          done();
-        });
-    */
-    done();
+  beforeEach(async () => {
+    try {
+      await _db.collection('tw_1_commits').drop();
+      await _db.collection('tw_1_snapshots').drop();
+    } catch (e) {
+    }
   });
 
-  after(function (done) {
-    _client.close(function () {
-      done();
-    });
+  afterAll(async () => {
+    await _client.close();
   })
 
   describe('#commit', function () {
-
-    it('should accept a commit and store it', function (done) {
+    test('should accept a commit and store it', (done) => {
       var store = new Store(getDb());
       store.openPartition('1').then(function (partition) {
         var events = [new Event(uuid(), 'type1', { test: 11 })];
         var commit = new Commit(uuid(), 'master', '1', 0, events);
-        partition.append(commit).then(function () { return partition.queryAll() }).then(function (x) {
-          x.length.should.equal(1);
+        partition.append(commit).then(function () {
+          return partition.queryAll()
+        }).then(function (x) {
+          expect(x.length).toEqual(1);
           done();
         }).catch(function (err) {
           done(err);
@@ -63,7 +56,7 @@ describe('indexeddb_persistence', function () {
       });
     });
 
-    it('commit in one stream is not visible in other', function (done) {
+    test('commit in one stream is not visible in other', (done) => {
       var store = new Store(getDb());
       store.openPartition('1').then(function (partition) {
         var events = [new Event(uuid(), 'type1', { test: 11 })];
@@ -75,8 +68,8 @@ describe('indexeddb_persistence', function () {
 
         partition.append(commit).then(function () {
           Promise.join(partition.queryStream('1'), partition.queryStream('2'), function (r1, r2) {
-            r1.length.should.equal(1);
-            r2.length.should.equal(1);
+            expect(r1.length).toEqual(1);
+            expect(r2.length).toEqual(1);
             done();
           }).catch(function (err) {
             done(err);
@@ -85,7 +78,7 @@ describe('indexeddb_persistence', function () {
       });
     });
 
-    it('two commits in one stream are visible', function (done) {
+    test('two commits in one stream are visible', (done) => {
       var store = new Store(getDb());
       store.openPartition('1').then(function (partition) {
         var events = [new Event(uuid(), 'type1', { test: 11 })];
@@ -95,7 +88,7 @@ describe('indexeddb_persistence', function () {
           var commit = new Commit(uuid(), 'master', '1', 1, events);
           partition.append(commit, function () {
             partition.queryAll().then(function (res) {
-              res.length.should.equal(2);
+              expect(res.length).toEqual(2);
               done();
             });
           });
@@ -104,7 +97,7 @@ describe('indexeddb_persistence', function () {
     });
   });
 
-  it('query stream from version without fallback', function (done) {
+  test('query stream from version without fallback', (done) => {
     var store = new Store(getDb());
     store.openPartition('1').then(function (partition) {
       var streamId = uuid();
@@ -113,7 +106,9 @@ describe('indexeddb_persistence', function () {
         new Event(uuid(), 'event-2', { test: 12, version: 1 }),
         new Event(uuid(), 'event-3', { test: 13, version: 2 })
       ];
-      events.forEach(function (e) { e.version = e.data.version }); // fake version...
+      events.forEach(function (e) {
+        e.version = e.data.version
+      }); // fake version...
       var commit = new Commit(uuid(), 'master', streamId, 0, events);
       partition.append(commit).then(function () {
         var events = [
@@ -121,13 +116,15 @@ describe('indexeddb_persistence', function () {
           new Event(uuid(), 'event-5', { test: 15, version: 4 }),
           new Event(uuid(), 'event-6', { test: 16, version: 5 })
         ];
-        events.forEach(function (e) { e.version = e.data.version }); // fake version...
+        events.forEach(function (e) {
+          e.version = e.data.version
+        }); // fake version...
         var commit = new Commit(uuid(), 'master', streamId, 1, events);
         partition.append(commit).then(function () {
-          partition.queryStream(streamId, 4).then((res) => {
-            res[0].events[0].version.should.equal(4);
-            res[0].events[1].version.should.equal(5);
-            res[0].commitSequence.should.equal(1)
+          partition.queryStream(streamId, 4).then(res => {
+            expect(res[0].events[0].version).toEqual(4);
+            expect(res[0].events[1].version).toEqual(5);
+            expect(res[0].commitSequence).toEqual(1);
             done();
           })
         });
@@ -135,7 +132,7 @@ describe('indexeddb_persistence', function () {
     });
   });
 
-  it('query stream from version lead to empty results', function (done) {
+  test('query stream from version lead to empty results', (done) => {
     var store = new Store(getDb());
     store.openPartition('1').then(function (partition) {
       var streamId = uuid();
@@ -144,7 +141,9 @@ describe('indexeddb_persistence', function () {
         new Event(uuid(), 'event-2', { test: 12, version: 1 }),
         new Event(uuid(), 'event-3', { test: 13, version: 2 })
       ];
-      events.forEach(function (e) { e.version = e.data.version }); // fake version...
+      events.forEach(function (e) {
+        e.version = e.data.version
+      }); // fake version...
       var commit = new Commit(uuid(), 'master', streamId, 0, events);
       partition.append(commit).then(function () {
         var events = [
@@ -152,11 +151,13 @@ describe('indexeddb_persistence', function () {
           new Event(uuid(), 'event-5', { test: 15, version: 4 }),
           new Event(uuid(), 'event-6', { test: 16, version: 5 })
         ];
-        events.forEach(function (e) { e.version = e.data.version }); // fake version...
+        events.forEach(function (e) {
+          e.version = e.data.version
+        }); // fake version...
         var commit = new Commit(uuid(), 'master', streamId, 1, events);
         partition.append(commit).then(function () {
-          partition.queryStream(streamId, 6).then((res) => {
-            res.should.eql([]);
+          partition.queryStream(streamId, 6).then(res => {
+            expect(res).toEqual([]);
             done();
           })
         });
@@ -164,7 +165,7 @@ describe('indexeddb_persistence', function () {
     });
   });
 
-  it('query stream from version with fallback', function (done) {
+  test('query stream from version with fallback', (done) => {
     var store = new Store(getDb());
     store.openPartition('1').then(function (partition) {
       var streamId = uuid();
@@ -173,7 +174,9 @@ describe('indexeddb_persistence', function () {
         new Event(uuid(), 'event-2', { test: 12, version: 1 }),
         new Event(uuid(), 'event-3', { test: 13, version: 2 })
       ];
-      events.forEach(function (e) { e.version = e.data.version }); // fake version...
+      events.forEach(function (e) {
+        e.version = e.data.version
+      }); // fake version...
       var commit = new Commit(uuid(), 'master', streamId, 0, events);
       partition.append(commit).then(function () {
         var events = [
@@ -181,15 +184,17 @@ describe('indexeddb_persistence', function () {
           new Event(uuid(), 'event-5', { test: 15, version: 4 }),
           new Event(uuid(), 'event-6', { test: 16, version: 5 })
         ];
-        events.forEach(function (e) { e.version = e.data.version }); // fake version...
+        events.forEach(function (e) {
+          e.version = e.data.version
+        }); // fake version...
         var commit = new Commit(uuid(), 'master', streamId, 1, events);
         partition.append(commit).then(function () {
           partition.queryStream(streamId, 2).then((res) => {
-            res.length.should.equal(2)
-            res[0].events[0].version.should.equal(2);
-            res[1].events[2].version.should.equal(5);
-            res[0].commitSequence.should.equal(0)
-            res[1].commitSequence.should.equal(1)
+            expect(res.length).toEqual(2);
+            expect(res[0].events[0].version).toEqual(2);
+            expect(res[1].events[2].version).toEqual(5);
+            expect(res[0].commitSequence).toEqual(0);
+            expect(res[1].commitSequence).toEqual(1);
             done();
           })
         });
@@ -197,17 +202,19 @@ describe('indexeddb_persistence', function () {
     });
   });
 
-  it('#getLatestCommit', function (done) {
+  test('#getLatestCommit', (done) => {
     var store = new Store(getDb());
     store.openPartition('1').then(function (partition) {
       var streamId = uuid();
       partition.getLatestCommit(streamId).then((res) => {
-        should.equal(res, undefined)
+        expect(res).toBeUndefined();
         var events = [
           new Event(uuid(), 'event-1', { test: 11, version: 0 }),
           new Event(uuid(), 'event-2', { test: 12, version: 1 }),
         ];
-        events.forEach(function (e) { e.version = e.data.version }); // fake version...
+        events.forEach(function (e) {
+          e.version = e.data.version
+        }); // fake version...
         var commit = new Commit(uuid(), 'master', streamId, 0, events);
         partition.append(commit).then(function () {
           var events = [
@@ -215,13 +222,15 @@ describe('indexeddb_persistence', function () {
             new Event(uuid(), 'event-5', { test: 15, version: 4 }),
             new Event(uuid(), 'event-6', { test: 16, version: 5 })
           ];
-          events.forEach(function (e) { e.version = e.data.version }); // fake version...
+          events.forEach(function (e) {
+            e.version = e.data.version
+          }); // fake version...
           var commit = new Commit(uuid(), 'master', streamId, 1, events);
           partition.append(commit).then(function () {
             partition.getLatestCommit(streamId).then((res) => {
-              res.commitSequence.should.equal(1)
-              res.events.length.should.equal(3);
-              res.events[2].data.test.should.equal(16);
+              expect(res.commitSequence).toEqual(1);
+              expect(res.events.length).toEqual(3);
+              expect(res.events[2].data.test).toEqual(16);
               done();
             })
           });
@@ -230,7 +239,7 @@ describe('indexeddb_persistence', function () {
     });
   });
 
-  it('#truncateStreamFrom', function (done) {
+  test('#truncateStreamFrom', (done) => {
     var store = new Store(getDb());
     store.openPartition('1').then(function (partition) {
       var firstStreamId = uuid();
@@ -242,18 +251,18 @@ describe('indexeddb_persistence', function () {
       promises.push(partition.append(new Commit(uuid(), 'master', secondStreamId, 1, [new Event(uuid(), 'event-2-2', { test: 22, version: 1 })])));
 
       Promise.all(promises).then(async () => {
-        await partition.truncateStreamFrom(firstStreamId, 1); // truncate from sequence 1
+        await partition.truncateStreamFrom(firstStreamId, 1);
         var r1 = await partition.queryStream(firstStreamId);
         var r2 = await partition.queryStream(secondStreamId);
-        r1.length.should.equal(1);
-        r1[0].commitSequence.should.equal(0); // seqeunce 0 should exist
-        r2.length.should.equal(2); // secondStream should not be affected
+        expect(r1.length).toEqual(1);
+        expect(r1[0].commitSequence).toEqual(0); // seqeunce 0 should exist
+        expect(r2.length).toEqual(2); // secondStream should not be affected
 
-        await partition.truncateStreamFrom(secondStreamId, -1); // truncate all
+        await partition.truncateStreamFrom(secondStreamId, -1);
         r1 = await partition.queryStream(firstStreamId);
         r2 = await partition.queryStream(secondStreamId);
-        r1.length.should.equal(1); // firstStream should not be affected
-        r2.length.should.equal(0); // should be empty
+        expect(r1.length).toEqual(1); // firstStream should not be affected
+        expect(r2.length).toEqual(0); // should be empty
 
         done();
       });
@@ -261,12 +270,12 @@ describe('indexeddb_persistence', function () {
   });
 
   describe('#snapshot', function () {
-    it('should return previously stored snapshot', function (done) {
+    test('should return previously stored snapshot', (done) => {
       var store = new Store(getDb());
       store.openPartition('1').then(function (part) {
         part.storeSnapshot('stream1', { iAmSnapshot: true }, 10).then(function (snapshot) {
           part.loadSnapshot('stream1').then(function (newSnapshot) {
-            newSnapshot.should.eql(snapshot);
+            expect(newSnapshot).toEqual(snapshot);
             done();
           });
         });
@@ -274,25 +283,26 @@ describe('indexeddb_persistence', function () {
     });
   });
   describe('#concurrency', function () {
-    it('same commit sequence twice should throw', function (done) {
+    test('same commit sequence twice should throw', (done) => {
       var store = new Store(getDb());
       store.openPartition('1').then(function (partition) {
         var events = [new Event(uuid(), 'type1', { test: 11 })];
         var commit = new Commit(uuid(), 'master', '1', 0, events);
         var commit2 = new Commit(uuid(), 'master', '1', 0, events);
-        return Promise.join(partition.append(commit), partition.append(commit2), function () {
+        return Promise.all([partition.append(commit), partition.append(commit2)]).then(() => {
           done(new Error("Should have thrown concurrency error"));
         });
-      }).catch(PersistenceConcurrencyError, function (err) {
-        done();
       }).catch(function (err) {
-        console.log('err' + err);
-        done(err);
-      });
+        if (err instanceof PersistenceConcurrencyError) {
+          done();
+        } else {
+          done(err);
+        }
+      })
     });
   });
   describe('#duplicateEvents', function () {
-    it('same commit twice should throw', function (done) {
+    test('same commit twice should throw', (done) => {
       var store = new Store(getDb());
       store.openPartition('1').then(function (partition) {
         var events = [new Event(uuid(), 'type1', { test: 11 })];
@@ -311,17 +321,17 @@ describe('indexeddb_persistence', function () {
     });
   });
   describe('#partition', function () {
-    it('getting the same partition twice should return same instance', function (done) {
+    test('getting the same partition twice should return same instance', (done) => {
       var store = new Store(getDb());
-      Promise.join(store.openPartition('1'), store.openPartition('1'), function (p1, p2) {
-        p1.should.equal(p2);
+      Promise.all([store.openPartition('1'), store.openPartition('1')]).then(([p1, p2]) => {
+        expect(p1).toBe(p2);
         done();
       });
     });
-    it('not indicating partition name should give master partition', function (done) {
+    test('not indicating partition name should give master partition', (done) => {
       var store = new Store(getDb());
-      Promise.join(store.openPartition(), store.openPartition('master'), function (p1, p2) {
-        p1.should.equal(p2);
+      Promise.all([store.openPartition(), store.openPartition('master')]).then(([p1, p2]) => {
+        expect(p1).toBe(p2);
         done();
       });
     });
