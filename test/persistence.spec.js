@@ -281,6 +281,18 @@ describe('indexeddb_persistence', () => {
         });
       });
     });
+    test('should remove snapshot', (done) => {
+      var store = new Store(getDb());
+      store.openPartition('1').then(function (part) {
+        part.storeSnapshot('stream1', { iAmSnapshot: true }, 10).then(function (snapshot) {
+          expect(snapshot.version).toEqual(10);
+          part.removeSnapshot('stream1').then(function (updated) {
+            expect(updated.version).toEqual(-1);
+            done();
+          })
+        });
+      });
+    });
   });
   describe('#concurrency', function () {
     test('same commit sequence twice should throw', (done) => {
